@@ -1,35 +1,42 @@
 <script setup lang="ts">
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { app, db } from '../../../firebase.js';
-import { getDoc, doc } from "firebase/firestore";
-
+import { getDoc, doc, getDocs, collection, onSnapshot, deleteDoc, query } from 'firebase/firestore';
 
 const store = useStore();
 const router = useRouter();
 const auth = getAuth(app);
-
-const loggedIn = ref(false)
-const role = ref()
+const role = ref();
 
 const getRole = async (user) => {
-  const roleDoc = await getDoc(doc(db, 'roles', user.uid))
+  const roleDoc = await getDoc(doc(db, 'roles', user.uid));
   role.value = roleDoc.data().role;
-}
+};
 
-onAuthStateChanged(auth,  (user) => {
+onAuthStateChanged(auth, (user) => {
   if (user) {
     store.dispatch('fetchUser', user);
-    loggedIn.value = true;
-    getRole(user)
+    getRole(user);
   }
 });
+
 const logout = async () => {
   await store.dispatch('logOut');
   await router.push('/login');
 };
+
+onMounted(async () => {
+  const courses = query(collection(db, 'courses'));
+  store.commit("SET_COURSES", [])
+  onSnapshot(courses, (querySnapshot) => {
+    querySnapshot.docs.map(document => {
+      store.commit('ADD_COURSE', document.data());
+    });
+  });
+});
 </script>
 
 <template>
@@ -38,7 +45,21 @@ const logout = async () => {
       <router-link class="text-white" to="/">Home</router-link>
       <router-link class="text-white" to="/courses">Courses</router-link>
       <router-link
-          v-if="!loggedIn"
+          v-if="role === 'admin' && store.state.user.loggedIn"
+          to="/dashboard/courses"
+          custom
+          v-slot="{ navigate }"
+      >
+        <button
+            class="bg-indigo-900 rounded-md px-6 py-2 text-white"
+            @click="navigate"
+            role="link"
+        >
+          Dashboard
+        </button>
+      </router-link>
+      <router-link
+          v-if="!store.state.user.loggedIn"
           to="/login"
           custom
           v-slot="{ navigate }"
@@ -59,21 +80,6 @@ const logout = async () => {
       >
         Logout
       </button>
-
-      <router-link
-          v-if="role === 'admin'"
-          to="/add-edit-course"
-          custom
-          v-slot="{ navigate }"
-      >
-        <button
-            class="bg-indigo-900 rounded-md px-6 py-2 text-white"
-            @click="navigate"
-            role="link"
-        >
-          Add Course
-        </button>
-      </router-link>
     </div>
   </div>
 </template>
